@@ -1,0 +1,11 @@
+[package]
+name = "remoter"
+version = "0.1.0"
+authors = ["Solra Bizna <solra@bizna.name>"]
+edition = "2018"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+anyhow = "1.0"
+regex = "1.4"
+unicode-width = "0.1"

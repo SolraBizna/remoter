@@ -13,6 +13,9 @@ use std::{
 };
 use unicode_width::UnicodeWidthStr;
 
+#[cfg(target_family="unix")]
+use std::os::unix::process::ExitStatusExt;
+
 const COLOR_MOUNT_PENDING: &str = "";
 const COLOR_MOUNT_WARNED: &str = "\x1B[33m";
 const COLOR_MOUNT_FAILED: &str = "\x1B[31m";
@@ -189,7 +192,7 @@ fn read_mounts() -> anyhow::Result<HashMap<PathBuf,String>> {
         let mut stderr = stderr.lock();
         let _ = stderr.write_all(&output.stderr[..]);
         drop(stderr);
-        #[cfg(target_os="unix")]
+        #[cfg(target_family="unix")]
         if let Some(status) = output.status.code() {
             return Err(anyhow!("mount exited with code {}, we can't do our \
                                 job.", status));
@@ -202,7 +205,7 @@ fn read_mounts() -> anyhow::Result<HashMap<PathBuf,String>> {
             return Err(anyhow!("mount exited with an unknown unsuccessful \
                                 status, we can't do our job."));
         }
-        #[cfg(not(target_os="unix"))]
+        #[cfg(not(target_family="unix"))]
         if let Some(status) = output.status.code() {
             return Err(anyhow!("mount exited with status {}, we can't do our \
                                 job.", status));

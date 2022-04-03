@@ -91,38 +91,65 @@ impl Host {
                            tx: &mpsc::Sender<(i32,Status)>) {
         assert_eq!(self.status, Status::Unknown);
         let at = remote_path.join(&self.local);
-        if let Some(wat) = mounts.get(&at) {
-            if wat == &self.remote {
-                self.status = Status::Okay;
-            }
-            else {
-                self.status = Status::Warned(format!("already mounted, but \
-                                                      wrong source? {:?}",
-                                                     wat));
-            }
-        }
-        else {
-            // Not already mounted. Mount it!
-            let remote = self.remote.clone();
-            let tx = tx.clone();
-            let y = self.y;
-            std::thread::spawn(move || {
-                let output = Command::new("sshfs")
-                    .arg("-o").arg("ServerAliveCountMax=3")
-                    .arg("-o").arg("ServeraliveInterval=10")
-                    .arg(remote)
-                    .arg(at)
-                    .output()
-                    .expect("attempting to run sshfs command");
-                if output.status.success() {
-                    let _ = tx.send((y, Status::Okay));
+        match at.read_dir() {
+            Ok(_) => {
+                let at = &at;
+                if let Some(wat) = mounts.get(at) {
+                    if wat == &self.remote {
+                        self.status = Status::Okay;
+                        return;
+                    }
+                    else {
+                        let why = format!("already mounted, but wrong source? \
+                                           {:?}", wat);
+                        self.status = Status::Warned(why);
+                        return;
+                    }
+                }
+            },
+            Err(x) => {
+                let at = &at;
+                let why = format!("unreadable: {}", x);
+                self.status = Status::Warned(why);
+                if cfg!(target_os = "linux") {
+                    let _ = Command::new("fusermount")
+                        .arg("-u")
+                        .arg(at)
+                        .spawn()
+                        .expect("attempting to unmount a broken \
+                                 remote")
+                        .wait();
                 }
                 else {
-                    let _ = tx.send((y, Status::Failed(String::from_utf8_lossy(&output.stderr[..]).to_owned().to_string())));
+                    let _ = Command::new("umount")
+                        .arg(at)
+                        .spawn()
+                        .expect("attempting to unmount a broken \
+                                 remote")
+                        .wait();
                 }
-            });
-            self.status = Status::Pending;
+            },
         }
+        // Not already mounted. Mount it!
+        let remote = self.remote.clone();
+        let tx = tx.clone();
+        let y = self.y;
+        std::thread::spawn(move || {
+            let output = Command::new("sshfs")
+                .arg("-o").arg("ServerAliveCountMax=3")
+                .arg("-o").arg("ServeraliveInterval=10")
+                .arg(remote)
+                .arg(at)
+                .output()
+                .expect("attempting to run sshfs command");
+            if output.status.success() {
+                let _ = tx.send((y, Status::Okay));
+            }
+            else {
+                let _ = tx.send((y, Status::Failed(String::from_utf8_lossy(&output.stderr[..]).to_owned().to_string())));
+            }
+        });
+        self.status = Status::Pending;
         assert_ne!(self.status, Status::Unknown);
     }
     pub fn print(&self) {
